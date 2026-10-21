@@ -1333,14 +1333,14 @@ body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .co
 }
 
 body[data-compact-display="taskbar"] .compact-shell {
-  width: 240px;
-  height: 40px;
+  width: 320px;
+  height: 48px;
   transform: none;
 }
 
 body[data-compact-display="taskbar"] .compact-hud {
-  width: 240px;
-  height: 40px;
+  width: 320px;
+  height: 48px;
   padding: 0 14px 0 10px;
   column-gap: 10px;
   border: 1px solid rgba(61, 57, 41, 0.14);
@@ -1397,16 +1397,21 @@ body[data-compact-display="taskbar"] .compact-metric-copy {
 }
 
 body[data-compact-display="taskbar"] .compact-metric-label {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 body[data-compact-display="taskbar"] .compact-metric-copy strong {
   min-width: 0;
-  font-size: 15px;
+  font-size: 16px;
   white-space: nowrap;
 }
 
-body[data-compact-display="taskbar"] .compact-delta,
+body[data-compact-display="taskbar"] .compact-delta {
+  color: #8a8274;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 body[data-compact-display="taskbar"] .compact-ideal-text,
 body[data-compact-display="taskbar"] .compact-velocity-text {
   display: none;

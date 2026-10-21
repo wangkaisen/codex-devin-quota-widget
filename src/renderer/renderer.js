@@ -576,8 +576,23 @@ function renderCompactMetric({ fill, ideal, idealText, velocity, velocityText, p
     window?.velocity?.requiredRemainingPercent
   );
   setText(percentTextElement, percentText(window?.remainingPercent));
-  setText(deltaTextElement, signedDeltaText(window?.paceDelta));
-  deltaTextElement.className = compactDeltaClass(window?.paceDelta);
+  if (isTaskbarMode()) {
+    setText(deltaTextElement, resetCountdownText(window?.resetsAt));
+    deltaTextElement.className = "compact-delta neutral";
+  } else {
+    setText(deltaTextElement, signedDeltaText(window?.paceDelta));
+    deltaTextElement.className = compactDeltaClass(window?.paceDelta);
+  }
+}
+
+function resetCountdownText(resetsAt) {
+  if (!resetsAt) return "--";
+  const ms = new Date(resetsAt).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return "0h";
+  const hours = ms / 3600000;
+  if (hours >= 48) return `${Math.floor(hours / 24)}d`;
+  if (hours >= 1) return `${Math.floor(hours)}h`;
+  return `${Math.max(1, Math.floor(ms / 60000))}m`;
 }
 
 function renderCompactHud(codex, devin) {

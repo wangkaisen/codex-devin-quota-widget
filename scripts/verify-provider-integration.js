@@ -4,11 +4,11 @@ const path = require("node:path");
 const childProcess = require("node:child_process");
 const { taskbarBounds } = require("../src/shared/compact-layout");
 
-assert.deepEqual(taskbarBounds({ x: 0, y: 0, width: 1920, height: 1080 }), { x: 1380, y: 1040, width: 240, height: 40 });
-assert.deepEqual(taskbarBounds({ x: -1920, y: -200, width: 1920, height: 1080 }), { x: -540, y: 840, width: 240, height: 40 });
+assert.deepEqual(taskbarBounds({ x: 0, y: 0, width: 1920, height: 1080 }), { x: 1300, y: 1032, width: 320, height: 48 });
+assert.deepEqual(taskbarBounds({ x: -1920, y: -200, width: 1920, height: 1080 }), { x: -620, y: 832, width: 320, height: 48 });
 assert.equal(taskbarBounds({ x: 0, y: 0, width: 1366, height: 768 }, 0).x, 0, "A saved x of zero is valid");
 assert.equal(taskbarBounds({ x: -1920, y: 0, width: 1920, height: 1080 }, -9999).x, -1920);
-assert.equal(taskbarBounds({ x: -1920, y: 0, width: 1920, height: 1080 }, 9999).x, -240);
+assert.equal(taskbarBounds({ x: -1920, y: 0, width: 1920, height: 1080 }, 9999).x, -320);
 
 if (!process.versions.electron) {
   (async () => {
@@ -262,10 +262,10 @@ async function runElectronChecks() {
     assert.equal(trayItems.find((item) => /停靠到任务栏/.test(item.label || "")).checked, true);
     const displayBounds = electron.screen.getDisplayMatching(undockedBounds).bounds;
     assert.deepEqual(window.getBounds(), {
-      x: displayBounds.x + displayBounds.width - 540,
-      y: displayBounds.y + displayBounds.height - 40,
-      width: 240,
-      height: 40
+      x: displayBounds.x + displayBounds.width - 620,
+      y: displayBounds.y + displayBounds.height - 48,
+      width: 320,
+      height: 48
     }, "Dock uses full display bounds, with room for the tray");
     assert.equal(window.isResizable(), false);
     await trayItems.find((item) => /停靠到任务栏/.test(item.label || "")).click();
@@ -316,7 +316,7 @@ async function runElectronChecks() {
       const quota = document.getElementById('compact' + name + 'Text').getBoundingClientRect();
       const track = document.getElementById('compact' + name + 'Fill').parentElement.getBoundingClientRect();
       return label.width > 0 && label.right <= quota.left && quota.right <= track.left && track.width > 10
-        && quota.top >= 0 && quota.bottom <= 40;
+        && quota.top >= 0 && quota.bottom <= 48;
     })`), true, "Dock labels, 100% quotas and tracks fit without overlap");
     await js("new Promise(resolve => setTimeout(resolve, 350))");
     await fs.writeFile(path.join(__dirname, "../artifacts/taskbar-dock.png"), (await window.webContents.capturePage()).toPNG());

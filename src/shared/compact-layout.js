@@ -8,7 +8,7 @@ const COMPACT_LAYOUT = Object.freeze({
     collapsedHeight: 28,
     expandedHeight: 124
   }),
-  taskbar: Object.freeze({ width: 240, height: 40, trayGap: 300 }),
+  taskbar: Object.freeze({ width: 320, height: 48, trayGap: 300 }),
   scale: Object.freeze({
     min: 0.46,
     max: 1.25
