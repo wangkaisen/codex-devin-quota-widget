@@ -1351,15 +1351,15 @@ body[data-compact-display="taskbar"] .compact-hud {
 }
 
 body[data-compact-display="taskbar"] .compact-metric {
-  --metric-accent: #2fa8cf;
-  --metric-accent-strong: #1e7fa0;
-  --metric-accent-soft: rgba(47, 168, 207, 0.22);
+  --metric-accent: #1e9fc9;
+  --metric-accent-strong: #106e8f;
+  --metric-accent-soft: rgba(30, 159, 201, 0.22);
 }
 
 body[data-compact-display="taskbar"] .compact-metric-short {
-  --metric-accent: #da7756;
-  --metric-accent-strong: #b85c38;
-  --metric-accent-soft: rgba(218, 119, 86, 0.22);
+  --metric-accent: #d2613f;
+  --metric-accent-strong: #9c4423;
+  --metric-accent-soft: rgba(210, 97, 63, 0.22);
 }
 
 body[data-compact-display="taskbar"] .compact-metric-label {
@@ -1368,7 +1368,7 @@ body[data-compact-display="taskbar"] .compact-metric-label {
 }
 
 body[data-compact-display="taskbar"] .compact-track {
-  background: rgba(61, 57, 41, 0.12);
+  background: rgba(61, 57, 41, 0.22);
 }
 
 body[data-compact-display="taskbar"] .compact-track::after {
@@ -1377,6 +1377,7 @@ body[data-compact-display="taskbar"] .compact-track::after {
 
 body[data-compact-display="taskbar"] .compact-track-fill {
   background: linear-gradient(90deg, var(--metric-accent), var(--metric-accent-strong));
+  opacity: 0.8;
 }
 
 body[data-compact-display="taskbar"] .compact-ideal-marker,
@@ -1397,7 +1398,7 @@ body[data-compact-display="taskbar"] .compact-metric-copy {
 }
 
 body[data-compact-display="taskbar"] .compact-metric-label {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 body[data-compact-display="taskbar"] .compact-metric-copy strong {
