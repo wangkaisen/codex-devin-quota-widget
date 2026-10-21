@@ -1,6 +1,6 @@
 const state = {
   lang: "zh",
-  quota: null,
+  snapshot: null,
   error: null,
   compact: true,
   compactDisplayMode: "hud",
@@ -27,7 +27,7 @@ const COMPACT_DEFAULT_SCALE = 0.46;
 const COMPACT_DEFAULT_SCALE_SNAP_DISTANCE = 0.035;
 const COMPACT_THEME_STORAGE_KEY = "codexQuotaCompactTheme";
 const COMPACT_THEMES = new Set(["glass", "island"]);
-const COMPACT_DISPLAY_MODES = new Set(["hud", "topStrip"]);
+const COMPACT_DISPLAY_MODES = new Set(["hud", "topStrip", "taskbar"]);
 
 function requiredElement(id) {
   const element = document.getElementById(id);
@@ -35,14 +35,6 @@ function requiredElement(id) {
     throw new Error(`Missing required DOM element: #${id}`);
   }
   return element;
-}
-
-function requiredElements(selector) {
-  const elements = document.querySelectorAll(selector);
-  if (elements.length === 0) {
-    throw new Error(`Missing required DOM elements: ${selector}`);
-  }
-  return elements;
 }
 
 const els = {
@@ -75,6 +67,8 @@ const els = {
   compactShortVelocityText: requiredElement("compactShortVelocityText"),
   compactWeeklyText: requiredElement("compactWeeklyText"),
   compactShortText: requiredElement("compactShortText"),
+  compactWeeklyLabel: requiredElement("compactWeeklyLabel"),
+  compactShortLabel: requiredElement("compactShortLabel"),
   compactWeeklyDelta: requiredElement("compactWeeklyDelta"),
   compactShortDelta: requiredElement("compactShortDelta"),
   compactThemeBtn: requiredElement("compactThemeBtn"),
@@ -85,7 +79,8 @@ const els = {
   compactAdviceKicker: requiredElement("compactAdviceKicker"),
   compactAdviceValue: requiredElement("compactAdviceValue"),
   compactPaceSignal: requiredElement("compactPaceSignal"),
-  compactResetLabels: requiredElements(".compact-reset-label"),
+  compactCodexStatus: requiredElement("compactCodexStatus"),
+  compactDevinStatus: requiredElement("compactDevinStatus"),
   compactResetInfo: requiredElement("compactResetInfo"),
   compactShortResetText: requiredElement("compactShortResetText"),
   compactWeeklyResetText: requiredElement("compactWeeklyResetText"),
@@ -113,13 +108,13 @@ const els = {
 
 const copy = {
   zh: {
-    brand: "Codex 额度",
+    brand: "Codex · Devin",
     loading: "读取中",
     ready: "已更新",
     error: "读取失败",
     remaining: "剩余",
-    primary: "5小时窗口",
-    secondary: "7天窗口",
+    primary: "Codex 7天",
+    secondary: "Devin 7天",
     plan: "计划",
     unknown: "未知",
     refresh: "刷新",
@@ -132,11 +127,13 @@ const copy = {
     expand: "展开窗口",
     resize: "缩放",
     theme: "切换 HUD 主题",
-    statusLoading: "正在读取 Codex 额度...",
-    statusReady: "额度已更新",
-    statusError: "无法读取 Codex 额度",
-    authRequired: "Codex CLI 需要登录后才能读取额度",
-    paceTitle: "使用节奏建议",
+    statusLoading: "正在读取双周额度...",
+    statusError: "无法读取额度",
+    authRequired: "需要登录后才能读取额度",
+    unavailable: "不可用",
+    partial: "部分可用",
+    cached: "缓存",
+    paceTitle: "Codex 节奏建议",
     weeklyPace: "7天节奏",
     actualRemaining: "实际剩余",
     idealRemaining: "理想剩余",
@@ -171,13 +168,13 @@ const copy = {
     noReset: "未提供重置时间"
   },
   en: {
-    brand: "Codex Quota",
+    brand: "Codex · Devin",
     loading: "Loading",
     ready: "Updated",
     error: "Failed",
     remaining: "left",
-    primary: "5-hour window",
-    secondary: "7-day window",
+    primary: "Codex 7d",
+    secondary: "Devin 7d",
     plan: "Plan",
     unknown: "Unknown",
     refresh: "Refresh",
@@ -190,11 +187,13 @@ const copy = {
     expand: "Expand",
     resize: "Resize",
     theme: "Switch HUD theme",
-    statusLoading: "Reading Codex quota...",
-    statusReady: "Quota updated",
-    statusError: "Unable to read Codex quota",
-    authRequired: "Codex CLI must be signed in before quota can be read",
-    paceTitle: "Usage pace advice",
+    statusLoading: "Reading both weekly quotas...",
+    statusError: "Unable to read quota",
+    authRequired: "Sign in before quota can be read",
+    unavailable: "unavailable",
+    partial: "Partly available",
+    cached: "cached",
+    paceTitle: "Codex pace advice",
     weeklyPace: "7-day pace",
     actualRemaining: "Actual",
     idealRemaining: "Ideal",
@@ -236,10 +235,6 @@ function t(path) {
 
 function setText(element, value) {
   element.textContent = value;
-}
-
-function setTextAll(elements, value) {
-  elements.forEach((element) => setText(element, value));
 }
 
 function setAttr(element, name, value) {
@@ -285,7 +280,7 @@ function clampPercentValue(value) {
 
 function formatWindow(window) {
   if (!window) return "--";
-  const resetText = window.resetsAt ? formatReset(window.resetsAt) : t("noReset");
+  const resetText = window.resetsAt ? compactResetTime(window) : t("noReset");
   return `${percentText(window.remainingPercent)} · ${resetText}`;
 }
 
@@ -327,7 +322,12 @@ function statusClassFromRemaining(remainingPercent) {
 }
 
 function renderStaticCopy() {
+  document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en";
   setText(els.brandName, t("brand"));
+  updateCompactMetricLabels();
+  setAttr(els.liquidMeter, "aria-label", `${t("brand")} · ${t("remaining")}`);
+  setAttr(els.compactShell, "aria-label", `${t("brand")} HUD`);
+  setAttr(els.compactHud, "aria-label", `${t("secondary")} / ${t("primary")} HUD`);
   setText(els.remainingLabel, t("remaining"));
   setText(els.primaryLabel, t("primary"));
   setText(els.secondaryLabel, t("secondary"));
@@ -354,30 +354,35 @@ function renderStaticCopy() {
   setAttr(els.compactThemeBtn, "aria-label", t("theme"));
   setAttr(els.compactResizeHandle, "title", t("resize"));
   setAttr(els.compactResizeHandle, "aria-label", t("resize"));
-  setTextAll(els.compactResetLabels, t("reset"));
   renderCompactTheme(state.compactTheme, { persist: false });
 }
 
-function renderQuota(quota) {
-  state.quota = quota;
-  state.error = null;
-  renderStaticCopy();
+function availableQuota(provider) {
+  return provider?.status === "ready" ? provider.quota : null;
+}
 
-  const remaining = quota?.remainingPercent;
+function renderQuota(providers = {}) {
+  renderStaticCopy();
+  const codex = availableQuota(providers.codex);
+  const devin = availableQuota(providers.devin);
+  const values = [codex, devin].map((quota) => finiteNumberOrNull(quota?.secondary?.remainingPercent)).filter((value) => value !== null);
+  const remaining = values.length ? Math.min(...values) : null;
   const quotaState = statusClassFromRemaining(remaining);
   els.body.dataset.state = quotaState;
   els.trafficLight.className = `traffic-light ${quotaState}`;
   els.statusDot.className = `status-dot ${quotaState}`;
-  setText(els.stateText, t("ready"));
-  setText(els.statusText, t("statusReady"));
   setText(els.remaining, percentText(remaining));
-  els.liquidFill.style.height = percentText(remaining);
-  renderCompactHud(quota);
-  setText(els.primaryText, formatWindow(quota?.primary));
-  setText(els.secondaryText, formatWindow(quota?.secondary));
-  setText(els.planText, quota?.planType || t("unknown"));
-
-  renderPaceAdvice(quota?.paceAdvice);
+  els.liquidFill.style.height = `${remaining ?? 0}%`;
+  renderCompactHud(codex, devin);
+  setText(els.primaryText, formatWindow(codex?.secondary));
+  setText(els.secondaryText, formatWindow(devin?.secondary));
+  setAttr(els.primaryText, "title", codex?.secondary?.resetsAt ? formatReset(codex.secondary.resetsAt) : t("noReset"));
+  setAttr(els.secondaryText, "title", devin?.secondary?.resetsAt ? formatReset(devin.secondary.resetsAt) : t("noReset"));
+  const plans = `Codex ${codex?.planType || "--"} · Devin ${devin?.planType || "--"}`;
+  setText(els.planText, plans);
+  setAttr(els.planText, "title", plans);
+  renderPaceAdvice(codex?.paceAdvice);
+  renderCompactAdvice(providers);
 }
 
 function renderPaceAdvice(advice) {
@@ -391,16 +396,32 @@ function renderPaceAdvice(advice) {
   setText(els.velocityPaceText, percentText(weekly?.velocity?.requiredRemainingPercent));
   setText(els.deltaPaceText, signedPercentText(weekly?.paceDelta));
   els.paceBadge.className = `pace-badge ${overall.severity}`;
-  renderCompactAdvice(advice);
 }
 
-function renderCompactAdvice(advice) {
-  const overall = advice?.overall || { status: "unknown", severity: "muted" };
+function renderCompactAdvice(providers) {
+  const priority = { urgent: 0, accelerate: 1, normal: 2, unknown: 3, coolingDown: 4, recentFast: 5, slow: 6, critical: 7 };
+  const summaries = Object.entries({ codex: "Codex", devin: "Devin" }).map(([name, label]) => {
+    const provider = providers[name];
+    const overall = availableQuota(provider)?.paceAdvice?.overall || { status: "unknown", severity: "muted" };
+    const statusLabel = provider?.status === "error" ? t("unavailable") : t(`status.${overall.status}`);
+    const statusElement = name === "codex" ? els.compactCodexStatus : els.compactDevinStatus;
+    const shortLabel = state.lang === "en"
+      ? provider?.status === "error" ? "Failed" : {
+        urgent: "Soon", accelerate: "Plenty", normal: "On track", recentFast: "Fast",
+        coolingDown: "Cooling", slow: "Slow", critical: "Low", unknown: "Unknown"
+      }[overall.status]
+      : statusLabel;
+    setText(statusElement, shortLabel);
+    setAttr(statusElement, "title", `${label}: ${statusLabel}`);
+    return { overall, description: `${label}: ${statusLabel}` };
+  });
+  const overall = summaries.reduce((worst, item) => priority[item.overall.status] > priority[worst.status] ? item.overall : worst, summaries[0].overall);
   const compactText = compactAdviceText(overall.status);
   setText(els.compactAdviceKicker, compactText.kicker);
   setText(els.compactAdviceValue, compactText.value);
-  setAttr(els.compactAdviceText, "title", t(`status.${overall.status}`));
-  setAttr(els.compactAdviceText, "aria-label", t(`status.${overall.status}`));
+  const description = summaries.map((item) => item.description).join(" · ");
+  setAttr(els.compactAdviceText, "title", description);
+  setAttr(els.compactAdviceText, "aria-label", description);
   els.compactAdviceText.className = `compact-advice ${overall.severity} ${overall.status}`;
   renderCompactPaceSignal(overall);
 }
@@ -559,9 +580,9 @@ function renderCompactMetric({ fill, ideal, idealText, velocity, velocityText, p
   deltaTextElement.className = compactDeltaClass(window?.paceDelta);
 }
 
-function renderCompactHud(quota) {
-  const weekly = quota?.paceAdvice?.longWindow;
-  const short = quota?.paceAdvice?.shortWindow;
+function renderCompactHud(codex, devin) {
+  const weekly = { ...codex?.paceAdvice?.longWindow, remainingPercent: codex?.secondary?.remainingPercent };
+  const devinWeekly = { ...devin?.paceAdvice?.longWindow, remainingPercent: devin?.secondary?.remainingPercent };
 
   renderCompactMetric(
     {
@@ -585,67 +606,41 @@ function renderCompactHud(quota) {
       percentTextElement: els.compactShortText,
       deltaTextElement: els.compactShortDelta
     },
-    short
+    devinWeekly
   );
-  setText(els.compactWeeklyResetText, compactResetDetail(quota?.secondary));
-  setText(els.compactShortResetText, compactResetDetail(quota?.primary));
+  setText(els.compactWeeklyResetText, compactResetDetail(codex?.secondary));
+  setText(els.compactShortResetText, compactResetDetail(devin?.secondary));
 }
 
 function renderLoading() {
-  renderStaticCopy();
-  els.body.dataset.state = "loading";
-  els.trafficLight.className = "traffic-light loading";
-  els.statusDot.className = "status-dot loading";
-  setText(els.stateText, t("loading"));
-  setText(els.statusText, t("statusLoading"));
-  if (!state.quota) {
-    renderCompactHud(null);
-    renderCompactAdvice(null);
-  }
+  renderQuotaState({ status: "loading", providers: {}, refreshing: true });
 }
 
 function renderError(error) {
-  state.quota = null;
-  state.error = error;
-  renderStaticCopy();
-  els.body.dataset.state = "danger";
-  els.trafficLight.className = "traffic-light danger";
-  els.statusDot.className = "status-dot danger";
-  setText(els.stateText, t("error"));
-  setText(els.statusText, `${t("statusError")}：${friendlyErrorMessage(error)}`);
-  setText(els.remaining, "--%");
-  els.liquidFill.style.height = "0%";
-  renderCompactHud(null);
-  setText(els.primaryText, "--");
-  setText(els.secondaryText, "--");
-  setText(els.planText, "--");
-  renderPaceAdvice(null);
+  renderQuotaState({ ...state.snapshot, refreshing: false, error });
 }
 
 function renderQuotaState(snapshot) {
-  const quota = snapshot?.quota || null;
-  const error = snapshot?.error || null;
-  const isRefreshing = Boolean(snapshot?.refreshing || snapshot?.status === "loading");
-  state.loading = isRefreshing;
-
-  if (quota) {
-    renderQuota(quota);
-    if (isRefreshing) {
-      setText(els.stateText, t("loading"));
-      setText(els.statusText, t("statusLoading"));
-    } else if (snapshot?.status === "error" && error) {
-      state.error = error;
-      setText(els.stateText, t("error"));
-      setText(els.statusText, `${t("statusError")}: ${friendlyErrorMessage(error)}`);
-    }
-    return;
-  }
-
-  if (snapshot?.status === "error") {
-    renderError(error);
-    state.loading = false;
-  } else {
-    renderLoading();
+  state.snapshot = snapshot;
+  state.error = snapshot?.error || null;
+  state.loading = Boolean(snapshot?.refreshing);
+  const providers = snapshot?.providers || {};
+  renderQuota(providers);
+  const notes = Object.entries({ codex: "Codex", devin: "Devin" }).map(([name, label]) => {
+    const provider = providers[name];
+    if (provider?.status === "error") return `${label} ${t("unavailable")}: ${friendlyErrorMessage(provider.error)}`;
+    if (provider?.fromCache) return `${label} ${t("cached")}`;
+    return `${label} ${provider?.status === "ready" ? t("ready") : t("loading")}`;
+  });
+  if (state.error) notes.push(`${t("statusError")}: ${friendlyErrorMessage(state.error)}`);
+  if (state.loading) notes.unshift(t("statusLoading"));
+  setText(els.statusText, notes.join(" · "));
+  setAttr(els.statusText, "title", notes.join(" · "));
+  setAttr(els.compactHud, "title", notes.join(" · "));
+  const status = snapshot?.status;
+  setText(els.stateText, state.loading ? t("loading") : t(status === "partial" ? "partial" : status === "ready" ? "ready" : status === "error" || state.error ? "error" : "loading"));
+  if (status === "partial" || status === "error" || state.error) {
+    els.statusDot.className = `status-dot ${status === "error" ? "danger" : "warning"}`;
   }
 }
 
@@ -659,16 +654,9 @@ function friendlyErrorMessage(error) {
 
 async function refreshQuota() {
   if (state.loading) return;
-  state.loading = true;
-  if (state.quota) {
-    renderQuotaState({ status: "loading", quota: state.quota, refreshing: true });
-  } else {
-    renderLoading();
-  }
-
+  renderQuotaState({ ...state.snapshot, refreshing: true });
   try {
-    const quotaState = await window.codexQuota.refreshQuota();
-    renderQuotaState(quotaState);
+    renderQuotaState(await window.codexQuota.refreshQuota());
   } catch (error) {
     renderError(error);
   } finally {
@@ -719,9 +707,20 @@ function isTopStripMode() {
   return state.compactDisplayMode === "topStrip";
 }
 
+function isTaskbarMode() {
+  return state.compactDisplayMode === "taskbar";
+}
+
+function updateCompactMetricLabels() {
+  const verbose = isTaskbarMode();
+  setText(els.compactWeeklyLabel, verbose ? "Codex" : "C7d");
+  setText(els.compactShortLabel, verbose ? "Devin" : "D7d");
+}
+
 function renderCompactDisplayMode(value) {
   state.compactDisplayMode = normalizeCompactDisplayMode(value);
   els.body.dataset.compactDisplay = state.compactDisplayMode;
+  updateCompactMetricLabels();
   renderCompactExpanded(false);
   if (!isTopStripMode()) {
     setCompactMousePassthrough(false);
@@ -824,7 +823,7 @@ function renderCompactButton(isCompact) {
 }
 
 function startCompactResize(event) {
-  if (!state.compact || isTopStripMode()) return;
+  if (!state.compact || isTopStripMode() || isTaskbarMode()) return;
   event.preventDefault();
   event.stopPropagation();
   state.resizing = {
@@ -878,13 +877,13 @@ function stopCompactResize() {
 }
 
 function renderCompactExpanded(expanded) {
-  state.compactExpanded = Boolean(expanded);
+  state.compactExpanded = Boolean(expanded) && !isTaskbarMode();
   els.body.dataset.compactExpanded = state.compactExpanded ? "true" : "false";
   syncCompactHoverProbe();
 }
 
 function setCompactExpanded(expanded) {
-  const nextExpanded = Boolean(expanded) && state.compact;
+  const nextExpanded = Boolean(expanded) && state.compact && !isTaskbarMode();
   if (state.compactExpanded === nextExpanded) return;
   renderCompactExpanded(nextExpanded);
   if (nextExpanded) setCompactMousePassthrough(false);
@@ -960,12 +959,12 @@ function startCompactMove(event) {
 }
 
 function isInsideCompactDragArea(event) {
-  if (isTopStripMode()) return isInsideCompactVisibleSurface(event);
+  if (isTopStripMode() || isTaskbarMode()) return isInsideCompactVisibleSurface(event);
   return isInsideCompactHudCapsule(event);
 }
 
 function isInsideCompactVisibleSurface(event) {
-  if (isTopStripMode()) {
+  if (isTopStripMode() || isTaskbarMode()) {
     return isInsideElementRect(event, els.compactHud);
   }
   if (isInsideCompactHudCapsule(event)) return true;
@@ -1058,13 +1057,7 @@ function stopCompactMove() {
 
 els.langBtn.addEventListener("click", () => {
   state.lang = state.lang === "zh" ? "en" : "zh";
-  if (state.quota) {
-    renderQuota(state.quota);
-  } else if (state.error) {
-    renderError(state.error);
-  } else {
-    renderLoading();
-  }
+  renderQuotaState(state.snapshot);
   syncAlwaysOnTop();
 });
 

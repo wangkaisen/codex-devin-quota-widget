@@ -2,12 +2,14 @@ const { EventEmitter } = require("node:events");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { getQuota } = require("./quota-service");
+const { getDevinQuota } = require("./devin-service");
 const { buildPaceAdvice } = require("./pace-advice");
 
 const CACHE_FILE_NAME = "quota-cache.json";
 const HISTORY_FILE_NAME = "quota-history.json";
-const CACHE_VERSION = 1;
-const HISTORY_VERSION = 1;
+const CACHE_VERSION = 2;
+const HISTORY_VERSION = 2;
+const PROVIDERS = ["codex", "devin"];
 const HISTORY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const HISTORY_MAX_SAMPLES = 4096;
 const VISIBLE_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
@@ -19,6 +21,7 @@ class QuotaStore extends EventEmitter {
   constructor({
     userDataPath,
     readQuota = getQuota,
+    readDevinQuota = (_reason, options) => getDevinQuota(options),
     visibleRefreshIntervalMs = VISIBLE_REFRESH_INTERVAL_MS,
     hiddenRefreshIntervalMs = HIDDEN_REFRESH_INTERVAL_MS,
     errorRetryBaseMs = ERROR_RETRY_BASE_MS,
@@ -26,13 +29,11 @@ class QuotaStore extends EventEmitter {
     autoSchedule = true
   }) {
     super();
-    if (!userDataPath) {
-      throw new Error("QuotaStore requires a userDataPath.");
-    }
+    if (!userDataPath) throw new Error("QuotaStore requires a userDataPath.");
 
     this.cachePath = path.join(userDataPath, CACHE_FILE_NAME);
     this.historyPath = path.join(userDataPath, HISTORY_FILE_NAME);
-    this.readQuota = readQuota;
+    this.readers = { codex: readQuota, devin: readDevinQuota };
     this.visibleRefreshIntervalMs = visibleRefreshIntervalMs;
     this.hiddenRefreshIntervalMs = hiddenRefreshIntervalMs;
     this.errorRetryBaseMs = errorRetryBaseMs;
@@ -40,50 +41,60 @@ class QuotaStore extends EventEmitter {
     this.autoSchedule = autoSchedule;
     this.windowVisible = true;
     this.failureCount = 0;
-    this.history = [];
+    this.history = { codex: [], devin: [] };
     this.inFlight = null;
+    this.requestController = null;
+    this.generation = 0;
     this.timer = null;
     this.state = {
+      providers: Object.fromEntries(PROVIDERS.map((name) => [name, {
+        status: "loading", quota: null, error: null, fromCache: false, lastUpdatedAt: null
+      }])),
       status: "loading",
-      quota: null,
       error: null,
-      fromCache: false,
       refreshing: false,
-      lastUpdatedAt: null,
       nextRefreshAt: null
     };
   }
 
   async loadCache() {
+    const generation = this.generation;
     await this.loadHistory();
     try {
       const cache = JSON.parse(await fs.readFile(this.cachePath, "utf8"));
-      if (cache?.version === CACHE_VERSION && cache.quota) {
-        this.recordHistory(cache.quota);
-        const quota = this.withCurrentPaceAdvice(cache.quota, cache.quota.fetchedAt || cache.savedAt);
-        this.state = {
-          ...this.state,
+      if (generation !== this.generation) return this.getState();
+      const entries = cache?.version === CACHE_VERSION ? cache.providers
+        : cache?.version === 1 ? { [cache.provider || "codex"]: cache } : {};
+      for (const name of PROVIDERS) {
+        const entry = entries?.[name];
+        if (!entry?.quota) continue;
+        this.recordHistory(name, entry.quota);
+        this.state.providers[name] = {
           status: "ready",
-          quota,
+          quota: this.withCurrentPaceAdvice(name, entry.quota, entry.quota.fetchedAt || entry.savedAt),
           error: null,
           fromCache: true,
-          lastUpdatedAt: cache.savedAt
+          lastUpdatedAt: entry.quota.fetchedAt || entry.savedAt
         };
-        this.emitState();
       }
+      this.state.status = this.aggregateStatus();
+      this.emitState();
     } catch (error) {
-      if (error?.code !== "ENOENT") {
-        this.state = {
-          ...this.state,
-          error: serializeError(error)
-        };
-      }
+      if (generation !== this.generation) return this.getState();
+      if (error?.code !== "ENOENT") this.state.error = serializeError(error);
     }
     return this.getState();
   }
 
   getState() {
     return JSON.parse(JSON.stringify(this.state));
+  }
+
+  aggregateStatus() {
+    const statuses = PROVIDERS.map((name) => this.state.providers[name].status);
+    if (statuses.every((status) => status === "ready")) return "ready";
+    if (statuses.some((status) => status === "ready")) return "partial";
+    return statuses.some((status) => status === "error") ? "error" : "loading";
   }
 
   setWindowVisible(value) {
@@ -104,68 +115,67 @@ class QuotaStore extends EventEmitter {
 
   refreshNow(reason = "manual") {
     if (this.inFlight) return this.inFlight;
-
     this.clearTimer();
-    this.state = {
-      ...this.state,
-      status: this.state.quota ? this.state.status : "loading",
-      error: null,
-      refreshing: true,
-      nextRefreshAt: null
-    };
+    this.state = { ...this.state, error: null, refreshing: true, nextRefreshAt: null };
     this.emitState();
-
-    this.inFlight = this.runRefresh(reason).finally(() => {
-      this.inFlight = null;
+    this.requestController = new AbortController();
+    const request = this.runRefresh(reason, this.generation, this.requestController.signal).finally(() => {
+      if (this.inFlight === request) this.inFlight = null;
     });
-    return this.inFlight;
+    this.inFlight = request;
+    return request;
   }
 
   destroy() {
+    this.generation += 1;
+    this.requestController?.abort();
     this.clearTimer();
     this.removeAllListeners();
   }
 
-  async runRefresh(reason) {
-    try {
-      const rawQuota = await this.readQuota(reason);
-      this.recordHistory(rawQuota);
-      const quota = this.withCurrentPaceAdvice(rawQuota, rawQuota.fetchedAt);
-      const fetchedAt = quota.fetchedAt || new Date().toISOString();
-      this.failureCount = 0;
-      this.state = {
-        ...this.state,
-        status: "ready",
-        quota,
-        error: null,
-        fromCache: false,
-        refreshing: false,
-        lastUpdatedAt: fetchedAt
-      };
-      await this.saveCache(quota);
-      await this.saveHistory();
-      this.emitState();
-      this.scheduleNextRefresh();
-    } catch (error) {
-      this.failureCount += 1;
-      this.state = {
-        ...this.state,
-        status: "error",
-        error: serializeError(error),
-        refreshing: false
-      };
-      this.emitState();
-      this.scheduleNextRefresh(this.retryDelayMs());
-    }
+  async runRefresh(reason, generation, signal) {
+    const results = await Promise.allSettled(PROVIDERS.map(async (name) => {
+      const rawQuota = await this.readers[name](reason, { signal });
+      if (generation !== this.generation) return null;
+      this.recordHistory(name, rawQuota);
+      return this.withCurrentPaceAdvice(name, rawQuota, rawQuota.fetchedAt);
+    }));
+    if (generation !== this.generation) return this.getState();
 
+    results.forEach((result, index) => {
+      const name = PROVIDERS[index];
+      this.state.providers[name] = result.status === "fulfilled" ? {
+        status: "ready", quota: result.value, error: null, fromCache: false,
+        lastUpdatedAt: result.value.fetchedAt || new Date().toISOString()
+      } : {
+        ...this.state.providers[name], status: "error", error: serializeError(result.reason)
+      };
+    });
+    this.failureCount = results.some((result) => result.status === "rejected") ? this.failureCount + 1 : 0;
+    this.state.status = this.aggregateStatus();
+    this.state.refreshing = false;
+    try {
+      if (results.some((result) => result.status === "fulfilled")) {
+        await this.saveCache();
+        await this.saveHistory();
+      }
+    } catch (error) {
+      if (generation !== this.generation) return this.getState();
+      this.state.error = serializeError(error);
+    }
+    if (generation !== this.generation) return this.getState();
+    this.emitState();
+    this.scheduleNextRefresh();
     return this.getState();
   }
 
-  async saveCache(quota) {
+  async saveCache() {
     const payload = {
       version: CACHE_VERSION,
-      savedAt: new Date().toISOString(),
-      quota
+      providers: Object.fromEntries(PROVIDERS.map((name) => [name, {
+        quota: this.state.providers[name].quota,
+        savedAt: this.state.providers[name].lastUpdatedAt
+      }]))
     };
     const tempPath = `${this.cachePath}.tmp`;
     await fs.mkdir(path.dirname(this.cachePath), { recursive: true });
@@ -174,63 +184,52 @@ class QuotaStore extends EventEmitter {
   }
 
   async loadHistory() {
+    const generation = this.generation;
     try {
       const payload = JSON.parse(await fs.readFile(this.historyPath, "utf8"));
-      this.history = normalizeHistory(payload?.version === HISTORY_VERSION ? payload.samples : []);
+      if (generation !== this.generation) return this.history;
+      const entries = payload?.version === HISTORY_VERSION ? payload.providers
+        : payload?.version === 1 ? { [payload.provider || "codex"]: payload.samples } : {};
+      for (const name of PROVIDERS) this.history[name] = normalizeHistory(entries?.[name]);
     } catch (error) {
-      if (error?.code !== "ENOENT") {
-        this.history = [];
-      }
+      if (generation !== this.generation) return this.history;
+      if (error?.code !== "ENOENT") this.history = { codex: [], devin: [] };
     }
-    this.history = pruneHistory(this.history, Date.now());
+    for (const name of PROVIDERS) this.history[name] = pruneHistory(this.history[name], Date.now());
     return this.history;
   }
 
   async saveHistory() {
-    const payload = {
-      version: HISTORY_VERSION,
-      samples: this.history
-    };
+    const payload = { version: HISTORY_VERSION, providers: this.history };
     const tempPath = `${this.historyPath}.tmp`;
     await fs.mkdir(path.dirname(this.historyPath), { recursive: true });
     await fs.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     await fs.rename(tempPath, this.historyPath);
   }
 
-  recordHistory(quota) {
+  recordHistory(name, quota) {
     const sample = quotaHistorySample(quota);
-    if (!sample) return this.history;
-
-    this.history = this.history.filter((entry) => entry.fetchedAt !== sample.fetchedAt);
-    this.history.push(sample);
-    this.history = pruneHistory(normalizeHistory(this.history), Date.parse(sample.fetchedAt));
-    return this.history;
+    if (!sample) return this.history[name];
+    const history = this.history[name].filter((entry) => entry.fetchedAt !== sample.fetchedAt);
+    history.push(sample);
+    this.history[name] = pruneHistory(normalizeHistory(history), Date.parse(sample.fetchedAt));
+    return this.history[name];
   }
 
-  withCurrentPaceAdvice(quota, now = new Date().toISOString()) {
-    return {
-      ...quota,
-      paceAdvice: buildPaceAdvice(quota, now || quota.fetchedAt, this.history)
-    };
+  withCurrentPaceAdvice(name, quota, now = new Date().toISOString()) {
+    return { ...quota, paceAdvice: buildPaceAdvice(quota, now || quota.fetchedAt, this.history[name]) };
   }
 
   scheduleNextRefresh(delayMs) {
     if (!this.autoSchedule) return;
-
     this.clearTimer();
     const intervalMs = Number.isFinite(delayMs)
       ? Math.max(0, delayMs)
       : this.windowVisible
-        ? this.visibleRefreshIntervalMs
+        ? (this.failureCount ? this.retryDelayMs() : this.visibleRefreshIntervalMs)
         : this.hiddenRefreshIntervalMs;
-    const nextRefreshAt = new Date(Date.now() + intervalMs).toISOString();
-    this.state = {
-      ...this.state,
-      nextRefreshAt
-    };
-    this.timer = setTimeout(() => {
-      this.refreshNow("scheduled").catch(() => {});
-    }, intervalMs);
+    this.state.nextRefreshAt = new Date(Date.now() + intervalMs).toISOString();
+    this.timer = setTimeout(() => { this.refreshNow("scheduled").catch(() => {}); }, intervalMs);
     this.emitState();
   }
 

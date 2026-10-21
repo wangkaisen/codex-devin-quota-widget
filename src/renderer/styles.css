@@ -695,7 +695,7 @@ body[data-state="danger"] .liquid-fill {
 
 .compact-metric-copy {
   display: grid;
-  grid-template-columns: 34px minmax(54px, auto) 40px;
+  grid-template-columns: 46px minmax(54px, auto) 40px;
   align-items: baseline;
   column-gap: 8px;
   min-width: 0;
@@ -1062,7 +1062,7 @@ body[data-compact-theme="island"] .compact-hud::after {
 
 .compact-reset-row {
   display: grid;
-  grid-template-columns: max-content max-content max-content;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   justify-content: center;
   column-gap: 12px;
   align-items: center;
@@ -1140,12 +1140,12 @@ body[data-compact-expanded="true"] .compact-velocity-text,
   transform: translate(-50%, -3px);
 }
 
-body[data-compact-display="topStrip"] .compact-shell {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-shell {
   width: var(--compact-layout-width, 500px);
   height: var(--compact-strip-expanded-height, 124px);
 }
 
-body[data-compact-display="topStrip"] .compact-hud {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-hud {
   top: 0;
   left: 0;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1164,67 +1164,67 @@ body[data-compact-display="topStrip"] .compact-hud {
     border-radius 150ms ease;
 }
 
-body[data-compact-display="topStrip"] .compact-hud::before,
-body[data-compact-display="topStrip"] .compact-hud::after,
-body[data-compact-display="topStrip"] .compact-hud-glow,
-body[data-compact-display="topStrip"] .compact-hud-shine,
-body[data-compact-display="topStrip"] .compact-divider {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-hud::before,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-hud::after,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-hud-glow,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-hud-shine,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-divider {
   display: none;
 }
 
-body[data-compact-display="topStrip"] .compact-metric {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-metric {
   display: grid;
   align-items: center;
   min-height: 0;
 }
 
-body[data-compact-display="topStrip"] .compact-metric-copy {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-metric-copy {
   display: none;
 }
 
-body[data-compact-display="topStrip"] .compact-track {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-track {
   height: 8px;
   margin-top: 0;
   overflow: visible;
   background: rgba(255, 255, 255, 0.16);
 }
 
-body[data-compact-display="topStrip"] .compact-track::after {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-track::after {
   display: none;
 }
 
-body[data-compact-display="topStrip"] .compact-track-fill {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-track-fill {
   background: linear-gradient(90deg, var(--metric-accent), var(--metric-accent-strong));
 }
 
-body[data-compact-display="topStrip"] .compact-ideal-marker,
-body[data-compact-display="topStrip"] .compact-velocity-marker {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-ideal-marker,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-velocity-marker {
   top: -4px;
   height: 16px;
 }
 
-body[data-compact-display="topStrip"] .compact-ideal-marker {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-ideal-marker {
   background: rgba(255, 255, 255, 0.92);
 }
 
-body[data-compact-display="topStrip"] .compact-velocity-marker {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-velocity-marker {
   background: rgba(55, 217, 255, 0.95);
 }
 
-body[data-compact-display="topStrip"] .compact-ideal-text,
-body[data-compact-display="topStrip"] .compact-velocity-text {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-ideal-text,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-velocity-text {
   top: -23px;
   padding: 2px 7px 3px;
   font-size: 14px;
 }
 
-body[data-compact-display="topStrip"] .compact-ideal-text {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-ideal-text {
   border-color: rgba(255, 255, 255, 0.42);
   color: rgba(255, 255, 255, 0.92);
   background: rgba(255, 255, 255, 0.12);
 }
 
-body[data-compact-display="topStrip"] .compact-velocity-text {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-velocity-text {
   top: -23px;
   border-color: rgba(55, 217, 255, 0.54);
   color: rgba(222, 250, 255, 0.96);
@@ -1241,7 +1241,7 @@ body[data-compact-display="topStrip"].is-moving .compact-hud {
   border-radius: 0 0 22px 22px;
 }
 
-body[data-compact-display="topStrip"] .compact-pace-signal {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-pace-signal {
   top: calc(50% - 2px);
   right: 10px;
   display: block;
@@ -1271,8 +1271,8 @@ body[data-compact-display="topStrip"].is-moving .compact-metric {
 body[data-compact-display="topStrip"][data-compact-expanded="true"] .compact-metric-copy,
 body[data-compact-display="topStrip"].is-moving .compact-metric-copy {
   display: grid;
-  grid-template-columns: 36px 76px 58px;
-  column-gap: 8px;
+  grid-template-columns: 56px 76px 54px;
+  column-gap: 5px;
   align-items: baseline;
   overflow: visible;
 }
@@ -1323,13 +1323,100 @@ body[data-compact-display="topStrip"].is-moving .compact-velocity-text {
   transform: translate(-50%, -3px);
 }
 
-body[data-compact-display="topStrip"] .compact-controls,
-body[data-compact-display="topStrip"] .compact-advice,
-body[data-compact-display="topStrip"] .compact-reset-info,
-body[data-compact-display="topStrip"] .compact-resize-handle {
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-controls,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-advice,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-reset-info,
+body:is([data-compact-display="topStrip"], [data-compact-display="taskbar"]) .compact-resize-handle {
   display: none;
   opacity: 0;
   pointer-events: none;
+}
+
+body[data-compact-display="taskbar"] .compact-shell {
+  width: 240px;
+  height: 40px;
+  transform: none;
+}
+
+body[data-compact-display="taskbar"] .compact-hud {
+  width: 240px;
+  height: 40px;
+  padding: 0 14px 0 10px;
+  column-gap: 10px;
+  border: 1px solid rgba(61, 57, 41, 0.14);
+  border-radius: 20px;
+  background: #f5f0e6;
+  box-shadow: 0 2px 10px rgba(20, 16, 10, 0.28);
+  transition: none;
+}
+
+body[data-compact-display="taskbar"] .compact-metric {
+  --metric-accent: #2fa8cf;
+  --metric-accent-strong: #1e7fa0;
+  --metric-accent-soft: rgba(47, 168, 207, 0.22);
+}
+
+body[data-compact-display="taskbar"] .compact-metric-short {
+  --metric-accent: #da7756;
+  --metric-accent-strong: #b85c38;
+  --metric-accent-soft: rgba(218, 119, 86, 0.22);
+}
+
+body[data-compact-display="taskbar"] .compact-metric-label {
+  color: #6b6558;
+  text-shadow: none;
+}
+
+body[data-compact-display="taskbar"] .compact-track {
+  background: rgba(61, 57, 41, 0.12);
+}
+
+body[data-compact-display="taskbar"] .compact-track::after {
+  display: none;
+}
+
+body[data-compact-display="taskbar"] .compact-track-fill {
+  background: linear-gradient(90deg, var(--metric-accent), var(--metric-accent-strong));
+}
+
+body[data-compact-display="taskbar"] .compact-ideal-marker,
+body[data-compact-display="taskbar"] .compact-velocity-marker,
+body[data-compact-display="taskbar"] .compact-pace-signal {
+  display: none;
+}
+
+body[data-compact-display="taskbar"] .compact-metric {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 6px;
+}
+
+body[data-compact-display="taskbar"] .compact-metric-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+body[data-compact-display="taskbar"] .compact-metric-label {
+  font-size: 12px;
+}
+
+body[data-compact-display="taskbar"] .compact-metric-copy strong {
+  min-width: 0;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+body[data-compact-display="taskbar"] .compact-delta,
+body[data-compact-display="taskbar"] .compact-ideal-text,
+body[data-compact-display="taskbar"] .compact-velocity-text {
+  display: none;
+}
+
+body[data-compact-display="taskbar"] .compact-pace-signal {
+  top: 50%;
+  right: 5px;
+  width: 5px;
+  height: 12px;
 }
 
 body[data-view="compact"] .widget {

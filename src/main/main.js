@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } = require
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { QuotaStore } = require("./quota-store");
-const { COMPACT_LAYOUT } = require("../shared/compact-layout");
+const { COMPACT_LAYOUT, taskbarBounds } = require("../shared/compact-layout");
 
 const APP_ICON_PATH = path.join(__dirname, "../../assets/app-icon.png");
 const TRAY_ICON_PATH = path.join(__dirname, "../../assets/app-icon-tray-16.png");
@@ -27,7 +27,10 @@ let compactScale = 0.46;
 let isCompactExpanded = false;
 let isCompactTopStrip = false;
 let isCompactMousePassthrough = false;
+let taskbarDock = { enabled: false, x: null, displayId: null, restore: null };
+let restoreCompactOnCreate = false;
 let signalSettings = { ...DEFAULT_SIGNAL_SETTINGS };
+let settingsWrite = Promise.resolve();
 
 const WINDOW_SIZES = {
   full: { width: 390, height: 336 }
@@ -61,6 +64,7 @@ function clampCompactScale(value) {
 }
 
 function compactDisplayMode() {
+  if (taskbarDock.enabled) return "taskbar";
   return isCompactTopStrip ? "topStrip" : "hud";
 }
 
@@ -72,6 +76,9 @@ function compactBaseSize(expanded = isCompactExpanded, topStrip = isCompactTopSt
 }
 
 function scaledCompactSize(scale = compactScale, expanded = isCompactExpanded, topStrip = isCompactTopStrip) {
+  if (taskbarDock.enabled) {
+    return { width: COMPACT_LAYOUT.taskbar.width, height: COMPACT_LAYOUT.taskbar.height };
+  }
   const safeScale = clampCompactScale(scale);
   const baseSize = compactBaseSize(expanded, topStrip);
   return {
@@ -89,17 +96,27 @@ async function startApp() {
     app.setAppUserModelId("cn.codex.quota.widget");
   }
 
-  signalSettings = await loadSignalSettings();
+  const settings = await loadWidgetSettings();
+  signalSettings = settings.signal;
+  taskbarDock = settings.taskbarDock;
+  if (taskbarDock.enabled && taskbarDock.restore) {
+    compactScale = taskbarDock.restore.scale;
+    isCompactTopStrip = taskbarDock.restore.displayMode === "topStrip";
+  }
   quotaStore = new QuotaStore({
     userDataPath: app.getPath("userData"),
     visibleRefreshIntervalMs: signalSettings.quotaRefreshMs
   });
   await quotaStore.loadCache();
-  quotaStore.on("state", (state) => sendToWindow("quota:changed", state));
+  quotaStore.on("state", (state) => {
+    sendToWindow("quota:changed", state);
+    updateTrayTooltip(state);
+  });
 
   registerIpcHandlers();
   createWindow();
   createTray();
+  setInterval(reassertPinnedWindow, 3000).unref();
   quotaStore.refreshNow("startup").catch(() => {});
 
   app.on("activate", showWindow);
@@ -119,7 +136,7 @@ function createWindow() {
     frame: false,
     transparent: true,
     resizable: false,
-    alwaysOnTop: isAlwaysOnTop,
+    alwaysOnTop: isAlwaysOnTop || taskbarDock.enabled,
     skipTaskbar: isCompactMode,
     show: false,
     backgroundColor: "#00000000",
@@ -134,6 +151,8 @@ function createWindow() {
 
   mainWindow = window;
   window.setHasShadow(!isCompactMode);
+  window.setAlwaysOnTop(isAlwaysOnTop || taskbarDock.enabled, "screen-saver");
+  window.setVisibleOnAllWorkspaces(isAlwaysOnTop || taskbarDock.enabled, { visibleOnFullScreen: true });
 
   window.webContents.on("did-finish-load", () => {
     window.webContents.send("quota:changed", quotaStore.getState());
@@ -169,8 +188,26 @@ function createWindow() {
   return window;
 }
 
+function reassertPinnedWindow() {
+  if (!isAlwaysOnTop && !taskbarDock.enabled) return;
+  const window = getLiveWindow();
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  if (!window.isVisible()) return;
+  window.moveTop();
+}
+
 function placeWindow(window = getLiveWindow()) {
   if (!window) return;
+  if (taskbarDock.enabled) {
+    placeTaskbarWindow(window);
+    return;
+  }
+  if (isCompactMode && restoreCompactOnCreate) {
+    restoreCompactOnCreate = false;
+    restoreCompactWindow(window);
+    return;
+  }
   if (isCompactMode) {
     setCompactTopStrip(false);
     isCompactExpanded = false;
@@ -192,6 +229,21 @@ function placeCompactWindowTopCenter(window = getLiveWindow()) {
     width,
     height
   });
+}
+
+function placeTaskbarWindow(window = getLiveWindow(), x = taskbarDock.x) {
+  if (!window) return null;
+  const savedDisplay = screen.getAllDisplays().find((item) => item.id === taskbarDock.displayId);
+  const display = savedDisplay || screen.getPrimaryDisplay();
+  const bounds = taskbarBounds(display.bounds, savedDisplay ? x : null);
+  taskbarDock.displayId = display.id;
+  window.setMinimumSize(1, 1);
+  window.setBounds(bounds);
+  window.setContentSize(bounds.width, bounds.height, false);
+  window.setMinimumSize(bounds.width, bounds.height);
+  const actualBounds = window.getBounds();
+  taskbarDock.x = actualBounds.x;
+  return actualBounds;
 }
 
 function resizeCompactWindow(window = getLiveWindow(), expanded = isCompactExpanded) {
@@ -230,9 +282,19 @@ function createTray() {
     throw new Error(`Tray icon is missing or invalid: ${TRAY_ICON_PATH}`);
   }
   tray = new Tray(icon);
-  tray.setToolTip("Codex Quota Widget");
+  updateTrayTooltip(quotaStore.getState());
   rebuildTrayMenu();
   tray.on("click", toggleWindow);
+}
+
+function updateTrayTooltip(state) {
+  if (!tray) return;
+  const labels = Object.entries({ codex: "Codex", devin: "Devin" }).map(([name, label]) => {
+    const provider = state.providers[name];
+    const remaining = provider.status === "ready" ? provider.quota?.secondary?.remainingPercent : null;
+    return `${label} 7d ${Number.isFinite(remaining) ? `${Math.round(remaining)}%` : "--"}`;
+  });
+  tray.setToolTip(labels.join(" · "));
 }
 
 function openSignalSettingsWindow() {
@@ -288,7 +350,14 @@ function rebuildTrayMenu() {
         click: () => setCompactMode(!isCompactMode)
       },
       {
+        label: "停靠到任务栏 / Dock to taskbar",
+        type: "checkbox",
+        checked: taskbarDock.enabled,
+        click: () => setTaskbarDock(!taskbarDock.enabled)
+      },
+      {
         label: isAlwaysOnTop ? "取消置顶" : "置顶",
+        enabled: !taskbarDock.enabled,
         click: () => setAlwaysOnTop(!isAlwaysOnTop)
       },
       { type: "separator" },
@@ -322,16 +391,35 @@ function registerIpcHandlers() {
   ipcMain.handle("signal:settings:reset", () => setSignalSettings(DEFAULT_SIGNAL_SETTINGS));
 }
 
-async function loadSignalSettings() {
+async function loadWidgetSettings() {
   try {
     const payload = JSON.parse(await fs.readFile(settingsPath(), "utf8"));
-    return normalizeSignalSettings(payload?.signal);
+    return {
+      signal: normalizeSignalSettings(payload?.signal),
+      taskbarDock: normalizeTaskbarDock(payload?.window?.taskbarDock)
+    };
   } catch (error) {
     if (error?.code !== "ENOENT") {
       console.warn(`Failed to read widget settings: ${error.message}`);
     }
-    return { ...DEFAULT_SIGNAL_SETTINGS };
+    return { signal: { ...DEFAULT_SIGNAL_SETTINGS }, taskbarDock: normalizeTaskbarDock() };
   }
+}
+
+function normalizeTaskbarDock(value) {
+  const restore = value?.restore;
+  return {
+    enabled: value?.enabled === true,
+    x: Number.isFinite(value?.x) ? Math.round(value.x) : null,
+    displayId: Number.isFinite(value?.displayId) ? value.displayId : null,
+    restore: restore && Number.isFinite(restore.x) && Number.isFinite(restore.y)
+      ? {
+        x: Math.round(restore.x), y: Math.round(restore.y),
+        displayMode: restore.displayMode === "topStrip" ? "topStrip" : "hud",
+        scale: Number.isFinite(restore.scale) ? clampCompactScale(restore.scale) : compactScale
+      }
+      : null
+  };
 }
 
 function settingsPath() {
@@ -341,7 +429,7 @@ function settingsPath() {
 async function setSignalSettings(settings) {
   signalSettings = normalizeSignalSettings(settings);
   quotaStore?.setVisibleRefreshIntervalMs(signalSettings.quotaRefreshMs);
-  await saveSignalSettings();
+  await saveWidgetSettings();
   sendToWindow("signal:settingsChanged", signalSettings);
   sendToSettingsWindow("signal:settingsChanged", signalSettings);
   return signalSettings;
@@ -367,26 +455,94 @@ function clampQuotaRefreshMs(value, fallback) {
   return Math.min(30 * 60 * 1000, Math.max(60 * 1000, Math.round(number)));
 }
 
-async function saveSignalSettings() {
+function saveWidgetSettings() {
   const filePath = settingsPath();
   const payload = {
     version: 1,
-    signal: signalSettings
+    signal: signalSettings,
+    window: { taskbarDock: { ...taskbarDock } }
   };
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  settingsWrite = settingsWrite.catch(() => {}).then(async () => {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const tempPath = `${filePath}.tmp`;
+    await fs.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    await fs.rename(tempPath, filePath);
+  });
+  return settingsWrite;
 }
 
 function setAlwaysOnTop(value) {
   isAlwaysOnTop = Boolean(value);
   const window = getLiveWindow();
-  if (window) window.setAlwaysOnTop(isAlwaysOnTop);
+  if (window) {
+    const pinned = isAlwaysOnTop || taskbarDock.enabled;
+    window.setAlwaysOnTop(pinned, "screen-saver");
+    window.setVisibleOnAllWorkspaces(pinned, { visibleOnFullScreen: true });
+  }
   sendToWindow("window:alwaysOnTopChanged", isAlwaysOnTop);
   rebuildTrayMenu();
   return isAlwaysOnTop;
 }
 
-function setCompactMode(value) {
+async function setTaskbarDock(value) {
+  const enabled = Boolean(value);
+  if (enabled === taskbarDock.enabled) return enabled;
+  const window = getLiveWindow();
+  if (enabled) {
+    const displayId = window ? screen.getDisplayMatching(window.getBounds()).id : screen.getPrimaryDisplay().id;
+    if (displayId !== taskbarDock.displayId) taskbarDock.x = null;
+    taskbarDock.displayId = displayId;
+    if (isCompactMode) {
+      rememberCompactWindow(window);
+    } else {
+      isCompactMode = true;
+      restoreCompactWindow(window);
+      sendToWindow("window:compactChanged", true);
+    }
+  }
+  taskbarDock.enabled = enabled;
+  restoreCompactOnCreate = !enabled && !window;
+  if (!enabled) isCompactTopStrip = taskbarDock.restore?.displayMode === "topStrip";
+  isCompactExpanded = false;
+  setCompactMousePassthrough(false);
+  if (window) {
+    window.setSkipTaskbar(true);
+    window.setResizable(false);
+    window.setHasShadow(false);
+    if (enabled) {
+      placeTaskbarWindow(window);
+    } else {
+      restoreCompactWindow(window);
+    }
+  }
+  setAlwaysOnTop(isAlwaysOnTop);
+  sendToWindow("window:compactDisplayModeChanged", compactDisplayMode());
+  await saveWidgetSettings();
+  return enabled;
+}
+
+function rememberCompactWindow(window) {
+  if (!window) return;
+  const { x, y } = window.getBounds();
+  taskbarDock.restore = { x, y, displayMode: compactDisplayMode(), scale: compactScale };
+}
+
+function restoreCompactWindow(window) {
+  if (!window) return;
+  isCompactTopStrip = taskbarDock.restore?.displayMode === "topStrip";
+  if (taskbarDock.restore) compactScale = taskbarDock.restore.scale;
+  resizeCompactWindow(window, false);
+  if (taskbarDock.restore) {
+    window.setPosition(taskbarDock.restore.x, taskbarDock.restore.y, false);
+  } else {
+    placeCompactWindowTopCenter(window);
+  }
+  sendToWindow("window:compactScaleChanged", compactScale);
+}
+
+async function setCompactMode(value) {
+  if (taskbarDock.enabled) await setTaskbarDock(false);
+  if (isCompactMode && !value) rememberCompactWindow(getLiveWindow());
   isCompactMode = Boolean(value);
   const window = getLiveWindow();
   if (window) {
@@ -413,6 +569,7 @@ function setCompactMode(value) {
 }
 
 function setCompactScale(value) {
+  if (taskbarDock.enabled) return compactScale;
   compactScale = clampCompactScale(value);
   const window = getLiveWindow();
   if (window && isCompactMode) {
@@ -428,7 +585,7 @@ function setCompactScale(value) {
 }
 
 function setCompactExpanded(value) {
-  isCompactExpanded = Boolean(value);
+  isCompactExpanded = Boolean(value) && !taskbarDock.enabled;
   const window = getLiveWindow();
   if (window && isCompactMode) {
     resizeCompactWindow(window, isCompactExpanded);
@@ -448,7 +605,7 @@ function setCompactTopStrip(value) {
 
 function setCompactMousePassthrough(value) {
   const window = getLiveWindow();
-  const nextValue = Boolean(value) && isCompactMode && isCompactTopStrip && !isCompactExpanded;
+  const nextValue = Boolean(value) && isCompactMode && isCompactTopStrip && !isCompactExpanded && !taskbarDock.enabled;
   if (isCompactMousePassthrough === nextValue) return isCompactMousePassthrough;
   isCompactMousePassthrough = nextValue;
   if (window) {
@@ -476,6 +633,10 @@ function moveCompactWindow(deltaX, deltaY) {
     throw new Error("Compact window movement requires finite numeric deltas.");
   }
   const bounds = window.getBounds();
+  if (taskbarDock.enabled) {
+    const next = placeTaskbarWindow(window, bounds.x + parsedDeltaX);
+    return { x: next.x, y: next.y, snapped: false, displayMode: "taskbar" };
+  }
   const x = Math.round(bounds.x + parsedDeltaX);
   const y = Math.round(bounds.y + parsedDeltaY);
   window.setPosition(x, y, false);
@@ -486,6 +647,10 @@ function snapCompactWindow() {
   const window = getLiveWindow();
   if (!window) throw new Error("Main window has not been created.");
   if (!isCompactMode) throw new Error("Compact window snapping is only available in compact mode.");
+  if (taskbarDock.enabled) {
+    const next = placeTaskbarWindow(window);
+    return saveWidgetSettings().then(() => ({ x: next.x, y: next.y, snapped: true, displayMode: "taskbar" }));
+  }
   const bounds = window.getBounds();
   const next = snapCompactPosition(bounds.x, bounds.y, bounds.width, bounds.height);
   const nextTopStrip = next.displayMode === "topStrip";

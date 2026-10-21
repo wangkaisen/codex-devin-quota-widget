@@ -52,8 +52,19 @@ async function getQuota() {
 }
 
 function normalizeSnapshot(snapshot) {
-  const primary = normalizeWindow(snapshot.primary);
-  const secondary = normalizeWindow(snapshot.secondary);
+  let primary = normalizeWindow(snapshot.primary);
+  let secondary = normalizeWindow(snapshot.secondary);
+  const windows = [primary, secondary].filter(Boolean);
+  if (windows.length === 1) {
+    const only = windows[0];
+    primary = (only.windowDurationMins ?? 0) <= 1440 ? only : null;
+    secondary = primary ? null : only;
+  } else if (
+    windows.length === 2 &&
+    (primary.windowDurationMins ?? 0) > (secondary.windowDurationMins ?? 0)
+  ) {
+    [primary, secondary] = [secondary, primary];
+  }
   const activeWindow = primary || secondary;
   if (!activeWindow) {
     throw new Error("Codex rate-limit snapshot does not include a usable quota window.");

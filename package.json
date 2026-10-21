@@ -31,7 +31,9 @@
     "start": "electron .",
     "test:pace": "node scripts/verify-pace-advice.js",
     "test:quota-store": "node scripts/verify-quota-store.js",
-    "test": "npm run test:pace && npm run test:quota-store",
+    "test:devin-service": "node scripts/verify-devin-service.js",
+    "test:provider-integration": "node scripts/verify-provider-integration.js",
+    "test": "npm run test:pace && npm run test:quota-store && npm run test:devin-service && npm run test:provider-integration",
     "build": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --win portable",
     "build:dir": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& electron-builder --dir"
   },

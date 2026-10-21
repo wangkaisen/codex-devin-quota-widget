@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Codex Quota Widget</title>
+    <title>Codex · Devin Weekly Quotas</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body data-state="loading" data-view="compact" data-compact-display="hud" data-compact-expanded="false">
@@ -15,7 +15,7 @@
         <div class="brand">
           <span id="trafficLight" class="traffic-light loading" aria-hidden="true"></span>
           <div>
-            <span id="brandName" class="brand-name">Codex 额度</span>
+            <span id="brandName" class="brand-name">Codex · Devin</span>
             <span id="stateText" class="brand-state">读取中</span>
           </div>
         </div>
@@ -50,7 +50,7 @@
       </header>
 
       <section class="content">
-        <div id="liquidMeter" class="liquid-meter" aria-label="Codex 剩余额度">
+        <div id="liquidMeter" class="liquid-meter" aria-label="双周额度较低剩余值">
           <div class="glass-rim"></div>
           <div id="liquidFill" class="liquid-fill">
             <div class="wave wave-one"></div>
@@ -65,11 +65,11 @@
 
         <div class="quota-panel">
           <div class="quota-card primary">
-            <span id="primaryLabel">5小时窗口</span>
+            <span id="primaryLabel">Codex 7天</span>
             <strong id="primaryText">--</strong>
           </div>
           <div class="quota-card">
-            <span id="secondaryLabel">7天窗口</span>
+            <span id="secondaryLabel">Devin 7天</span>
             <strong id="secondaryText">--</strong>
           </div>
           <div class="quota-card slim">
@@ -80,7 +80,7 @@
 
         <section class="pace-panel" aria-labelledby="paceTitle">
           <div class="pace-heading">
-            <span id="paceTitle">使用节奏建议</span>
+            <span id="paceTitle">Codex 节奏建议</span>
             <span id="paceBadge" class="pace-badge muted">--</span>
           </div>
           <div class="pace-line">
@@ -98,11 +98,11 @@
 
       <footer class="status">
         <span id="statusDot" class="status-dot loading"></span>
-        <span id="statusText">正在读取 Codex 额度...</span>
+        <span id="statusText">正在读取双周额度...</span>
       </footer>
 
-      <section id="compactShell" class="compact-shell" aria-label="Codex 额度 HUD">
-        <div id="compactHud" class="compact-hud" aria-label="7天窗口和5小时窗口额度 HUD">
+      <section id="compactShell" class="compact-shell" aria-label="Codex 和 Devin 周额度 HUD">
+        <div id="compactHud" class="compact-hud" aria-label="Codex 7天和 Devin 7天额度 HUD">
           <div class="compact-hud-glow compact-hud-glow-weekly" aria-hidden="true"></div>
           <div class="compact-hud-glow compact-hud-glow-short" aria-hidden="true"></div>
           <div class="compact-hud-shine" aria-hidden="true"></div>
@@ -110,7 +110,7 @@
 
           <div class="compact-metric compact-metric-weekly">
             <div class="compact-metric-copy">
-              <span class="compact-metric-label">7d</span>
+              <span id="compactWeeklyLabel" class="compact-metric-label">C7d</span>
               <strong id="compactWeeklyText">--</strong>
               <span id="compactWeeklyDelta" class="compact-delta">--</span>
             </div>
@@ -127,7 +127,7 @@
 
           <div class="compact-metric compact-metric-short">
             <div class="compact-metric-copy">
-              <span class="compact-metric-label">5h</span>
+              <span id="compactShortLabel" class="compact-metric-label">D7d</span>
               <strong id="compactShortText">--</strong>
               <span id="compactShortDelta" class="compact-delta">--</span>
             </div>
@@ -161,13 +161,13 @@
         </div>
         <div id="compactResetInfo" class="compact-reset-info" aria-label="窗口重置时间">
           <div class="compact-reset-row compact-reset-weekly">
-            <strong>7d</strong>
-            <span class="compact-reset-label">重置时间</span>
+            <strong>C7d</strong>
+            <span id="compactCodexStatus" class="compact-reset-label">未知</span>
             <span id="compactWeeklyResetText" class="compact-detail-reset">--</span>
           </div>
           <div class="compact-reset-row compact-reset-short">
-            <strong>5h</strong>
-            <span class="compact-reset-label">重置时间</span>
+            <strong>D7d</strong>
+            <span id="compactDevinStatus" class="compact-reset-label">未知</span>
             <span id="compactShortResetText" class="compact-detail-reset">--</span>
           </div>
         </div>
